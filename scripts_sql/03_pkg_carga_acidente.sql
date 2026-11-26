@@ -1,39 +1,9 @@
 -- 03_pkg_carga_acidente.sql
--- Projeto: Acidentes nas rodovias federais (PRF 2025), LAB BD V, Fatec Bauru
--- Autor: Vitor Gimenes Magalhães (CST em Banco de Dados, LAB de Desenvolvimento de BD V, Profa. Mariana Rodrigues Santesso)
--- Limpeza dos dados e carga da staging para as dimensões e a fato.
--- Executar o arquivo inteiro como script (F5), depois dos scripts 01 e 02,
--- com a STG_ACIDENTE já conferida (72.529 linhas).
---
--- Conteúdo, na ordem exigida pelas dependências:
---   Parte 0  Teste da conversão numérica
---   Parte 1  Especificação da package (funções de limpeza e procedure de carga)
---   Parte 2  VW_STG_ACIDENTE_LIMPA, que reúne todas as regras de limpeza
---   Parte 3  Corpo da package (registro de erros, MERGE nas dimensões, fato)
---   Parte 4  Execução
---   Parte 5  Conferência após a carga
---
--- A carga pode ser repetida sem efeitos colaterais:
---   Dimensões: o MERGE insere apenas valores novos, sem apagar nem renumerar,
---              e as chaves ficam estáveis entre cargas.
---   Fato:      é recarregada por completo (DELETE + INSERT) a partir da staging,
---              que sempre contém o arquivo inteiro.
---   Tudo ocorre em uma única transação; qualquer falha desfaz a carga com
---   ROLLBACK. Por isso a fato é esvaziada com DELETE e não com TRUNCATE, que é
---   DDL e faria um COMMIT implícito no meio do processo.
---
--- Registro de problemas (STG_ACIDENTE_ERRO):
---   fl_bloqueante = 'S'  a linha não entra na fato (id, data, horário ou
---                        quantidades inválidos)
---   fl_bloqueante = 'N'  aviso: a linha entra, mas algum valor foi tratado ou
---                        diverge da fonte
+-- Autor: Vitor Gimenes Magalhães | LAB de Desenvolvimento de BD V, Fatec Bauru
+-- Limpeza e carga da staging para o modelo estrela, em transação única e repetível.
 
 
--- Parte 0. Teste da conversão numérica
--- A fonte usa vírgula decimal. A conversão informa o separador explicitamente
--- (NLS_NUMERIC_CHARACTERS) e funciona com qualquer configuração regional da sessão.
--- Esperado: -15,5804836399 | -16 | 0 | 123,4 | (null).
--- O SQL Developer pode exibir os valores com ponto ou vírgula, conforme a configuração.
+-- Conversão com vírgula decimal. Esperado: -15,5804836399 | -16 | 0 | 123,4 | (null)
 SELECT TO_NUMBER('-15,5804836399' DEFAULT NULL ON CONVERSION ERROR,
                  '99999D9999999999', 'NLS_NUMERIC_CHARACTERS='',.''') AS t1,
        TO_NUMBER('-16'            DEFAULT NULL ON CONVERSION ERROR,
@@ -47,60 +17,33 @@ SELECT TO_NUMBER('-15,5804836399' DEFAULT NULL ON CONVERSION ERROR,
   FROM dual;
 
 
--- Parte 1. Especificação da package
--- As funções são públicas porque a view de limpeza (parte 2) e as views do
--- script 04 aplicam as mesmas regras; assim cada regra é escrita uma só vez.
+-- Especificação (funções públicas, reutilizadas nas views)
 CREATE OR REPLACE PACKAGE pkg_carga_acidente AS
 
-    -- Remove espaços nas extremidades e espaços repetidos. Retorna NULL para os
-    -- marcadores de ausência da fonte (NA, N/A, NULL, Ignorado, Não Informado),
-    -- em maiúsculas ou minúsculas.
+    -- Espaços extras removidos; NA, N/A, NULL, Ignorado e Não Informado viram NULL
     FUNCTION fn_limpa_texto (p_valor IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC;
 
-    -- Normaliza o traçado: itens limpos, sem repetição, em ordem alfabética
-    -- binária (independente do NLS_SORT da sessão) e separados por ';'.
-    -- 'Reta;Aclive' e 'Aclive;Reta' resultam no mesmo 'Aclive;Reta'.
+    -- Itens do traçado sem repetição e em ordem: 'Reta;Aclive' vira 'Aclive;Reta'
     FUNCTION fn_normaliza_tracado (p_valor IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC;
 
-    -- Nome do estado e região a partir da sigla; NULL para sigla desconhecida.
     FUNCTION fn_nome_uf (p_sigla IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC;
     FUNCTION fn_regiao  (p_sigla IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC;
 
-    -- Classificação obtida dos contadores, regra que confere com todas as linhas
-    -- que têm classificação preenchida na fonte: com mortos, Com Vítimas Fatais;
-    -- com feridos, Com Vítimas Feridas; nos demais casos, Sem Vítimas.
+    -- Com mortos: Fatais; com feridos: Feridas; senão Sem Vítimas
     FUNCTION fn_classificacao (p_mortos IN NUMBER, p_feridos IN NUMBER)
         RETURN VARCHAR2 DETERMINISTIC;
 
-    -- Carga completa: registro de erros, dimensões, fato e COMMIT.
     PROCEDURE prc_carregar;
 
 END pkg_carga_acidente;
 /
 
 
--- Parte 2. View de limpeza
--- Lê a STG_ACIDENTE, sem alterá-la, e devolve cada coluna já tratada. As colunas
--- tx_* guardam o valor original, usado apenas no registro de erros.
---
--- Regras aplicadas:
---   id            somente dígitos; caso contrário NULL (bloqueante)
---   data          formato AAAA-MM-DD; caso contrário NULL (bloqueante)
---   horário       HH:MI ou HH:MI:SS, convertido em minuto do dia + 1;
---                 caso contrário NULL (bloqueante)
---   município     em maiúsculas, sem espaços extras
---   UF            apenas as 27 siglas válidas; caso contrário registro 0
---   unidade PRF   nível ausente vira 'Não informado' apenas naquele nível;
---                 sem os três níveis, registro 0
---   condição via  atributo ausente vira 'Não informado'; uso do solo
---                 Sim = Urbano, Não = Rural, outros valores 'N/I'
---   BR 0          gravada como NULL, assim como o km da mesma linha
---   coordenadas   vírgula decimal; fora do território brasileiro, NULL
---   quantidades   inteiros não negativos; caso contrário a linha é bloqueada
+-- View de limpeza: staging tratada coluna a coluna (tx_* = valor original, para o log)
 CREATE OR REPLACE VIEW vw_stg_acidente_limpa AS
 WITH base AS (
     SELECT
-        -- originais (para o log)
+        -- originais
         s.id                                            AS id_original,
         s.data_inversa                                  AS tx_data,
         s.dia_semana                                    AS tx_dia_semana,
@@ -131,17 +74,16 @@ WITH base AS (
         UPPER(pkg_carga_acidente.fn_limpa_texto(s.municipio)) AS nm_municipio,
         UPPER(pkg_carga_acidente.fn_limpa_texto(s.uf))        AS uf_limpa,
 
-        -- unidade PRF (níveis crus, tratados no SELECT final)
+        -- unidade PRF
         pkg_carga_acidente.fn_limpa_texto(s.regional)   AS regional_limpa,
         pkg_carga_acidente.fn_limpa_texto(s.delegacia)  AS delegacia_limpa,
         pkg_carga_acidente.fn_limpa_texto(s.uop)        AS uop_limpa,
 
-        -- dimensões de atributo único
         pkg_carga_acidente.fn_limpa_texto(s.causa_acidente)         AS ds_causa,
         pkg_carga_acidente.fn_limpa_texto(s.tipo_acidente)          AS ds_tipo_acidente,
         pkg_carga_acidente.fn_limpa_texto(s.condicao_metereologica) AS ds_meteorologia,
 
-        -- junk dimension
+        -- condição da via (uso do solo: Sim = Urbano, Não = Rural)
         NVL(pkg_carga_acidente.fn_limpa_texto(s.fase_dia),    'Não informado') AS ds_fase_dia,
         NVL(pkg_carga_acidente.fn_limpa_texto(s.sentido_via), 'Não informado') AS ds_sentido_via,
         NVL(pkg_carga_acidente.fn_limpa_texto(s.tipo_pista),  'Não informado') AS ds_tipo_pista,
@@ -151,14 +93,11 @@ WITH base AS (
              ELSE 'N/I'
         END                                             AS ds_uso_solo,
 
-        -- traçado
-        -- O "(SELECT ... FROM dual)" ativa o cache de subquery escalar do
-        -- Oracle: com ~600 textos distintos para 72 mil linhas, a função
-        -- roda ~600 vezes em vez de 72 mil.
+        -- traçado (a subquery escalar faz o Oracle reaproveitar o resultado da função)
         (SELECT pkg_carga_acidente.fn_normaliza_tracado(s.tracado_via)
            FROM dual)                                   AS ds_tracado,
 
-        -- atributos numéricos da ocorrência (conversão bruta)
+        -- BR, km e coordenadas
         TO_NUMBER(TRIM(s.br) DEFAULT NULL ON CONVERSION ERROR)  AS nr_br_conv,
         TO_NUMBER(TRIM(s.km) DEFAULT NULL ON CONVERSION ERROR,
                   '99999D9999999999', 'NLS_NUMERIC_CHARACTERS='',.''') AS nr_km_conv,
@@ -211,7 +150,7 @@ SELECT
          THEN b.nr_km_conv END                                   AS nr_km,
     b.nr_lat_conv,
     b.nr_lon_conv,
-    -- caixa do território brasileiro (com folga): lat -34..6, lon -74..-28
+    -- fora do Brasil (lat -34 a 6, lon -74 a -28) vira NULL
     CASE WHEN b.nr_lat_conv BETWEEN -34 AND 6 AND b.nr_lon_conv BETWEEN -74 AND -28
          THEN b.nr_lat_conv END                                  AS nr_latitude,
     CASE WHEN b.nr_lat_conv BETWEEN -34 AND 6 AND b.nr_lon_conv BETWEEN -74 AND -28
@@ -230,12 +169,9 @@ SELECT
 FROM base b;
 
 
--- Parte 3. Corpo da package
+-- Corpo da package
 CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
 
-    -- -
-    -- Funções de limpeza (públicas)
-    -- -
     FUNCTION fn_limpa_texto (p_valor IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC IS
         PRAGMA UDF;
         v_valor VARCHAR2(4000);
@@ -322,14 +258,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
     END fn_classificacao;
 
 
-    -- -
-    -- Passo 0: trava de encoding
-    -- Se este script ou o 02 foram abertos com codificação errada no
-    -- editor, os textos acentuados ('Não informado', 'sábado'...) ficam
-    -- corrompidos e as comparações falham em silêncio. Aqui a carga para.
-    -- UNISTR monta o texto correto por código Unicode, sem depender do
-    -- encoding do arquivo.
-    -- -
+    -- Interrompe a carga se os acentos dos scripts ou do CSV estiverem corrompidos
     PROCEDURE prc_verificar_encoding IS
         v_dia  dim_data.nm_dia_semana%TYPE;
         v_qt   NUMBER;
@@ -367,23 +296,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
     END prc_verificar_encoding;
 
 
-    -- -
-    -- Passo 1: log de erros e avisos
-    -- -
+    -- Registro de erros (S: linha fora da fato) e avisos (N: linha entra)
     PROCEDURE prc_registrar_erros IS
     BEGIN
         DELETE FROM stg_acidente_erro;
 
-        -- ---------- BLOQUEANTES
-        -- B1. id ausente ou não numérico
+        -- id ausente ou não numérico
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo, fl_bloqueante)
         SELECT SUBSTR(id_original, 1, 20), 'id', SUBSTR(id_original, 1, 200),
                'Id ausente ou não numérico', 'S'
           FROM vw_stg_acidente_limpa
          WHERE id_ocorrencia IS NULL;
 
-        -- B2. id duplicado (todas as cópias são rejeitadas: não há como
-        --     saber qual é a correta)
+        -- id duplicado (todas as cópias são rejeitadas)
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo, fl_bloqueante)
         SELECT SUBSTR(id_original, 1, 20), 'id', SUBSTR(id_original, 1, 200),
                'Id duplicado na staging (' || qt || ' linhas)', 'S'
@@ -393,14 +318,14 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
                  WHERE id_ocorrencia IS NOT NULL)
          WHERE qt > 1;
 
-        -- B3. data ausente ou inválida
+        -- data ausente ou inválida
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo, fl_bloqueante)
         SELECT SUBSTR(id_original, 1, 20), 'data_inversa', SUBSTR(tx_data, 1, 200),
                'Data ausente ou inválida (esperado AAAA-MM-DD)', 'S'
           FROM vw_stg_acidente_limpa
          WHERE dt_acidente IS NULL;
 
-        -- B4. data válida, mas fora do período gerado na DIM_DATA
+        -- data fora da DIM_DATA
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo, fl_bloqueante)
         SELECT SUBSTR(v.id_original, 1, 20), 'data_inversa', SUBSTR(v.tx_data, 1, 200),
                'Data fora do período da DIM_DATA (amplie o INSERT do 02)', 'S'
@@ -408,22 +333,22 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
          WHERE v.sk_data IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM dim_data d WHERE d.sk_data = v.sk_data);
 
-        -- B5. horário ausente ou inválido
+        -- horário ausente ou inválido
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo, fl_bloqueante)
         SELECT SUBSTR(id_original, 1, 20), 'horario', SUBSTR(tx_horario, 1, 200),
                'Horário ausente ou inválido (esperado HH:MI:SS)', 'S'
           FROM vw_stg_acidente_limpa
          WHERE sk_horario IS NULL;
 
-        -- B6. alguma quantidade ausente, não numérica, negativa ou fracionada
+        -- quantidade inválida
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo, fl_bloqueante)
         SELECT SUBSTR(id_original, 1, 20), 'quantidades', SUBSTR(tx_quantidades, 1, 200),
                'Quantidade ausente, não numérica ou negativa', 'S'
           FROM vw_stg_acidente_limpa
          WHERE fl_qt_invalida = 'S';
 
-        -- ---------- AVISOS (a linha entra na fato)
-        -- A1. km preenchido, mas não numérico (gravado como NULL)
+        -- Avisos
+        -- km não numérico
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(id_original, 1, 20), 'km', SUBSTR(tx_km, 1, 200),
                'km não numérico (gravado NULL)'
@@ -431,7 +356,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
          WHERE pkg_carga_acidente.fn_limpa_texto(tx_km) IS NOT NULL
            AND nr_km_conv IS NULL;
 
-        -- A2. coordenada não numérica
+        -- coordenada não numérica
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(id_original, 1, 20), 'latitude/longitude',
                SUBSTR(tx_latitude || ' / ' || tx_longitude, 1, 200),
@@ -440,7 +365,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
          WHERE (pkg_carga_acidente.fn_limpa_texto(tx_latitude)  IS NOT NULL AND nr_lat_conv IS NULL)
             OR (pkg_carga_acidente.fn_limpa_texto(tx_longitude) IS NOT NULL AND nr_lon_conv IS NULL);
 
-        -- A3. coordenada numérica, mas fora do Brasil
+        -- coordenada fora do Brasil
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(id_original, 1, 20), 'latitude/longitude',
                SUBSTR(tx_latitude || ' / ' || tx_longitude, 1, 200),
@@ -449,16 +374,14 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
          WHERE nr_lat_conv IS NOT NULL AND nr_lon_conv IS NOT NULL
            AND nr_latitude IS NULL;
 
-        -- A4. UF preenchida, mas desconhecida (localidade vai para o registro 0)
+        -- UF desconhecida
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(id_original, 1, 20), 'uf', SUBSTR(tx_uf, 1, 200),
                'UF desconhecida (localidade -> Não informado)'
           FROM vw_stg_acidente_limpa
          WHERE uf_limpa IS NOT NULL AND sg_uf IS NULL;
 
-        -- A5. classificação da fonte diverge da regra.
-        --     A coluna não é armazenada (é derivada na view), então a
-        --     divergência fica registrada aqui. Em 2025: 1 linha ('NA').
+        -- classificação da fonte diferente da calculada
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(id_original, 1, 20), 'classificacao_acidente',
                SUBSTR(tx_classificacao, 1, 200),
@@ -472,9 +395,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
                <> pkg_carga_acidente.fn_classificacao(qt_mortos,
                                                       qt_feridos_leves + qt_feridos_graves);
 
-        -- A6. coluna "feridos" da fonte difere de leves + graves.
-        --     Justifica não armazenar a coluna: se isso aparecer, a fonte
-        --     tem informação que a regra não reproduz.
+        -- feridos da fonte diferente de leves + graves
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(id_original, 1, 20), 'feridos', TO_CHAR(qt_feridos_fonte),
                'feridos da fonte difere de leves + graves ('
@@ -483,7 +404,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
          WHERE fl_qt_invalida = 'N'
            AND NVL(qt_feridos_fonte, -1) <> qt_feridos_leves + qt_feridos_graves;
 
-        -- A7. dia da semana da fonte diverge da data
+        -- dia da semana diferente da data
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT SUBSTR(v.id_original, 1, 20), 'dia_semana', SUBSTR(v.tx_dia_semana, 1, 200),
                'Dia da semana da fonte difere da data (' || d.nm_dia_semana || ')'
@@ -493,9 +414,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
     END prc_registrar_erros;
 
 
-    -- -
-    -- Passo 2: dimensões (MERGE só insere o que é novo)
-    -- -
+    -- Dimensões: o MERGE só insere valores novos, as chaves não mudam entre cargas
     PROCEDURE prc_carregar_dimensoes IS
     BEGIN
         MERGE INTO dim_localidade d
@@ -539,8 +458,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
            ON (d.ds_meteorologia = s.ds_meteorologia)
          WHEN NOT MATCHED THEN INSERT (ds_meteorologia) VALUES (s.ds_meteorologia);
 
-        -- Junk: se todos os atributos vierem ausentes, a combinação coincide
-        -- com o membro 0 e o MERGE simplesmente não insere nada.
         MERGE INTO dim_condicao_via d
         USING (SELECT DISTINCT ds_fase_dia, ds_sentido_via, ds_tipo_pista, ds_uso_solo
                  FROM vw_stg_acidente_limpa) s
@@ -552,8 +469,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
               INSERT (ds_fase_dia, ds_sentido_via, ds_tipo_pista, ds_uso_solo)
               VALUES (s.ds_fase_dia, s.ds_sentido_via, s.ds_tipo_pista, s.ds_uso_solo);
 
-        -- Traçado: a flag é 'S' quando o item aparece na combinação.
-        -- Os delimitadores ';' nas pontas evitam falso positivo por substring.
+        -- Traçado: 'S' quando o item aparece na combinação
         MERGE INTO dim_tracado d
         USING (SELECT ds_tracado,
                       REGEXP_COUNT(ds_tracado, ';') + 1 AS qt_itens,
@@ -580,9 +496,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
                       s.fl_desvio_temporario, s.fl_em_obras, s.fl_intersecao_vias, s.fl_ponte,
                       s.fl_reta, s.fl_retorno_regulamentado, s.fl_rotatoria, s.fl_tunel, s.fl_viaduto);
 
-        -- A8. aviso: combinação com item fora dos 12 conhecidos
-        --     (nº de itens diferente do nº de flags 'S'). Sinal de que um
-        --     arquivo novo trouxe um valor de traçado que exige nova flag.
+        -- aviso: traçado com item fora dos 12 indicadores
         INSERT INTO stg_acidente_erro (id_ocorrencia, coluna, valor_original, motivo)
         SELECT NULL, 'tracado_via', SUBSTR(ds_tracado, 1, 200),
                'Combinação com item fora da lista de flags da DIM_TRACADO'
@@ -595,9 +509,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
     END prc_carregar_dimensoes;
 
 
-    -- -
-    -- Passo 3: fato (recarga completa)
-    -- -
+    -- Fato: recarga completa (DELETE, e não TRUNCATE, para manter a transação única)
     PROCEDURE prc_carregar_fato IS
     BEGIN
         DELETE FROM fato_acidente;
@@ -643,9 +555,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
     END prc_carregar_fato;
 
 
-    -- -
-    -- Resumo no DBMS_OUTPUT
-    -- -
     PROCEDURE prc_resumo IS
         v_stg   NUMBER;
         v_fato  NUMBER;
@@ -668,9 +577,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
     END prc_resumo;
 
 
-    -- -
-    -- Orquestração (pública)
-    -- -
+    -- Carga completa; qualquer falha desfaz tudo
     PROCEDURE prc_carregar IS
     BEGIN
         prc_verificar_encoding;
@@ -690,28 +597,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_carga_acidente AS
 END pkg_carga_acidente;
 /
 
--- Se aparecer "Package Body compilado (com erros)", rode para ver o motivo:
--- SELECT line, position, text FROM user_errors
---  WHERE name IN ('PKG_CARGA_ACIDENTE', 'VW_STG_ACIDENTE_LIMPA') ORDER BY name, sequence;
-
-
--- Parte 4. Execução
+-- Execução
 SET SERVEROUTPUT ON;
 EXEC pkg_carga_acidente.prc_carregar;
 
 
--- Parte 5. Conferência após a carga
--- Valores esperados calculados diretamente do CSV de 2025.
-
--- 5.1 Registro de erros. Esperado: 0 bloqueantes e 1 aviso
---     (classificação 'NA' do id 652519, calculada como Com Vítimas Fatais).
+-- Conferência
+-- Esperado: 0 bloqueantes e 1 aviso (classificação do id 652519)
 SELECT fl_bloqueante, coluna, motivo, COUNT(*) AS qt
   FROM stg_acidente_erro
  GROUP BY fl_bloqueante, coluna, motivo
  ORDER BY fl_bloqueante DESC, qt DESC;
 
--- 5.2 Fato. Esperado: 72529 linhas e os mesmos totais da staging
---     (pessoas 188346 | mortos 6043 | feridos leves + graves 83550 | veículos 144922).
+-- Esperado: 72529 | 188346 | 6043 | 83550 | 144922
 SELECT COUNT(*)                                  AS qt_linhas,
        SUM(qt_pessoas)                           AS pessoas,
        SUM(qt_mortos)                            AS mortos,
@@ -719,9 +617,7 @@ SELECT COUNT(*)                                  AS qt_linhas,
        SUM(qt_veiculos)                          AS veiculos
   FROM fato_acidente;
 
--- 5.3 Dimensões (contando o membro 0), esperado:
---     LOCALIDADE 1884 | UNIDADE_PRF 417 | CAUSA 70 | TIPO_ACIDENTE 18
---     METEOROLOGIA 9  | CONDICAO_VIA 65 | TRACADO 231
+-- Esperado: 1884 | 417 | 70 | 18 | 9 | 65 | 231
 SELECT 'DIM_LOCALIDADE'    AS tabela, COUNT(*) AS qt FROM dim_localidade    UNION ALL
 SELECT 'DIM_UNIDADE_PRF',             COUNT(*)       FROM dim_unidade_prf   UNION ALL
 SELECT 'DIM_CAUSA',                   COUNT(*)       FROM dim_causa         UNION ALL
@@ -730,18 +626,17 @@ SELECT 'DIM_METEOROLOGIA',            COUNT(*)       FROM dim_meteorologia  UNIO
 SELECT 'DIM_CONDICAO_VIA',            COUNT(*)       FROM dim_condicao_via  UNION ALL
 SELECT 'DIM_TRACADO',                 COUNT(*)       FROM dim_tracado;
 
--- 5.4 Uso do membro 0 (Não informado), esperado:
---     meteorologia 1000 ('Ignorado') | unidade PRF 2 | demais 0
+-- Uso do registro 0. Esperado: 1000 | 2 | 0 | 0 | 0 | 0 | 167
 SELECT SUM(CASE WHEN sk_meteorologia = 0 THEN 1 ELSE 0 END) AS meteo_0,
        SUM(CASE WHEN sk_unidade_prf  = 0 THEN 1 ELSE 0 END) AS unidade_0,
        SUM(CASE WHEN sk_localidade   = 0 THEN 1 ELSE 0 END) AS localidade_0,
        SUM(CASE WHEN sk_causa        = 0 THEN 1 ELSE 0 END) AS causa_0,
        SUM(CASE WHEN sk_tipo_acidente= 0 THEN 1 ELSE 0 END) AS tipo_0,
        SUM(CASE WHEN sk_tracado      = 0 THEN 1 ELSE 0 END) AS tracado_0,
-       SUM(CASE WHEN nr_br IS NULL        THEN 1 ELSE 0 END) AS br_nula      -- esperado 167
+       SUM(CASE WHEN nr_br IS NULL        THEN 1 ELSE 0 END) AS br_nula
   FROM fato_acidente;
 
--- 5.5 Amostra do traçado normalizado (deve estar em ordem alfabética)
+-- Amostra do traçado normalizado
 SELECT ds_tracado, qt_itens, fl_curva, fl_reta, fl_aclive, fl_declive
   FROM dim_tracado
  WHERE qt_itens >= 3

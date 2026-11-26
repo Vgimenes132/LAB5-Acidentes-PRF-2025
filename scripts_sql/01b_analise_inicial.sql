@@ -1,28 +1,9 @@
 -- 01b_analise_inicial.sql
--- Projeto: Acidentes nas rodovias federais (PRF 2025), LAB BD V, Fatec Bauru
--- Autor: Vitor Gimenes Magalhães (CST em Banco de Dados, LAB de Desenvolvimento de BD V, Profa. Mariana Rodrigues Santesso)
--- Diagnóstico do dado bruto na staging, antes de qualquer tratamento
--- (item "Análise inicial dos dados" da Etapa 2).
--- Executar depois do 01_staging.sql, como script (F5), com o usuário do projeto.
---
--- Conteúdo:
---   Parte 1  Visão geral
---   Parte 2  Dados faltantes (nulos e marcadores de ausência)
---   Parte 3  Dados duplicados
---   Parte 4  Erros de formato e de conteúdo
---   Parte 5  Inconsistências entre colunas
---   Parte 6  Problemas estruturais (codificação, decimal, campo multivalorado)
---
--- Somente leitura: nenhuma linha é alterada. Os valores esperados foram
--- conferidos sobre a staging de 2025 (72.529 linhas). A STG_ACIDENTE_ERRO,
--- preenchida pelo script 03, registra linha a linha o que aqui aparece em totais.
---
--- A máscara numérica usada nas coordenadas aceita até 20 casas decimais, porque
--- alguns valores da fonte trazem resíduo de ponto flutuante (ex.: -9,128114010000001).
+-- Autor: Vitor Gimenes Magalhães | LAB de Desenvolvimento de BD V, Fatec Bauru
+-- Diagnóstico do dado bruto na staging (somente leitura).
 
 
--- Parte 1. Visão geral
--- Esperado: 72529 linhas | 72529 ids distintos | 01/01/2025 a 31/12/2025.
+-- Visão geral. Esperado: 72529 | 72529 | 01/01/2025 | 31/12/2025
 SELECT COUNT(*)                 AS qt_linhas,
        COUNT(DISTINCT id)       AS qt_ids_distintos,
        MIN(TO_DATE(data_inversa DEFAULT NULL ON CONVERSION ERROR, 'FXYYYY-MM-DD')) AS dt_minima,
@@ -30,11 +11,8 @@ SELECT COUNT(*)                 AS qt_linhas,
   FROM stg_acidente;
 
 
--- Parte 2. Dados faltantes
--- Conta, por coluna, os valores nulos ou com marcador de ausência da fonte
--- (NA, N/A, NULL, Ignorado, Não Informado). Só as colunas afetadas são listadas.
--- Esperado: classificacao_acidente 1 | sentido_via 167 | condicao_metereologica 1000 |
---           regional 2 | delegacia 22 | uop 38.
+-- Faltantes por coluna (nulo, NA, N/A, NULL, Ignorado, Não Informado)
+-- Esperado: classificacao 1 | sentido_via 167 | meteorologia 1000 | regional 2 | delegacia 22 | uop 38
 SELECT coluna, qt_ausente
   FROM (
     SELECT  1 AS nr_ordem, 'id'                      AS coluna,
@@ -160,8 +138,7 @@ SELECT coluna, qt_ausente
  WHERE qt_ausente > 0
  ORDER BY nr_ordem;
 
--- 2.1 BR igual a 0 não corresponde a uma rodovia: indica que o número não foi informado.
---     Esperado: 167 linhas, todas com km 0 e sentido 'Não Informado'.
+-- BR 0 (não informada). Esperado: 167 | 167 | 167
 SELECT COUNT(*)                                             AS qt_br_zero,
        SUM(CASE WHEN TRIM(km) = '0' THEN 1 ELSE 0 END)      AS qt_km_zero,
        SUM(CASE WHEN UPPER(TRIM(sentido_via)) = 'NÃO INFORMADO' THEN 1 ELSE 0 END) AS qt_sentido_ni
@@ -169,16 +146,13 @@ SELECT COUNT(*)                                             AS qt_br_zero,
  WHERE TRIM(br) = '0';
 
 
--- Parte 3. Dados duplicados
-
--- 3.1 Mesmo id em mais de uma linha. Esperado: nenhuma linha.
+-- Id repetido. Esperado: nenhuma linha
 SELECT id, COUNT(*) AS qt
   FROM stg_acidente
  GROUP BY id
 HAVING COUNT(*) > 1;
 
--- 3.2 Linhas idênticas em todas as colunas, exceto o id (a mesma ocorrência
---     registrada duas vezes com ids diferentes). Esperado: 0.
+-- Linhas idênticas com ids diferentes. Esperado: 0
 SELECT COUNT(*) AS qt_grupos_repetidos, NVL(SUM(qt), 0) AS qt_linhas_envolvidas
   FROM (SELECT COUNT(*) AS qt
           FROM stg_acidente
@@ -191,9 +165,7 @@ SELECT COUNT(*) AS qt_grupos_repetidos, NVL(SUM(qt), 0) AS qt_linhas_envolvidas
         HAVING COUNT(*) > 1);
 
 
--- Parte 4. Erros de formato e de conteúdo
-
--- 4.1 Formatos inválidos. Esperado: 0 em todas as colunas.
+-- Formatos inválidos. Esperado: 0 em todas
 SELECT SUM(CASE WHEN NOT REGEXP_LIKE(TRIM(id), '^[0-9]+$') OR id IS NULL
                 THEN 1 ELSE 0 END)                                    AS id_invalido,
        SUM(CASE WHEN VALIDATE_CONVERSION(TRIM(data_inversa) AS DATE, 'FXYYYY-MM-DD') = 0
@@ -213,9 +185,7 @@ SELECT SUM(CASE WHEN NOT REGEXP_LIKE(TRIM(id), '^[0-9]+$') OR id IS NULL
                 THEN 1 ELSE 0 END)                                    AS quantidade_invalida
   FROM stg_acidente;
 
--- 4.2 Classificação ausente ou diferente da obtida pelos contadores
---     (com mortos: Com Vítimas Fatais; com feridos: Com Vítimas Feridas; senão Sem Vítimas).
---     Esperado: 1 linha (id 652519, classificação ausente, 1 morto).
+-- Classificação diferente da obtida pelos contadores. Esperado: id 652519 (NA, 1 morto)
 SELECT id, classificacao_acidente, mortos, feridos_leves, feridos_graves
   FROM stg_acidente
  WHERE NVL(TRIM(classificacao_acidente), '#') <>
@@ -224,10 +194,7 @@ SELECT id, classificacao_acidente, mortos, feridos_leves, feridos_graves
                  THEN 'Com Vítimas Feridas'
             ELSE 'Sem Vítimas' END;
 
--- 4.3 Coordenadas. Esperado: 0 | 0 | 52 | 19 | 41.
---     fora_brasil: fora do retângulo latitude -34 a 6, longitude -74 a -28
---     inteira:     latitude ou longitude sem casas decimais (localização imprecisa)
---     ruido_*:     mais de 10 casas decimais (resíduo de ponto flutuante)
+-- Coordenadas (Brasil: lat -34 a 6, lon -74 a -28). Esperado: 0 | 0 | 52 | 19 | 41
 SELECT SUM(CASE WHEN lat IS NULL OR lon IS NULL THEN 1 ELSE 0 END)          AS nao_numerica,
        SUM(CASE WHEN NOT (lat BETWEEN -34 AND 6 AND lon BETWEEN -74 AND -28)
                 THEN 1 ELSE 0 END)                                         AS fora_brasil,
@@ -244,12 +211,7 @@ SELECT SUM(CASE WHEN lat IS NULL OR lon IS NULL THEN 1 ELSE 0 END)          AS n
           FROM stg_acidente);
 
 
--- Parte 5. Inconsistências entre colunas
-
--- 5.1 Contadores. Esperado: 3823 | 0 | 0.
---     pessoas_menor:  "pessoas" menor que mortos + feridos + ilesos + ignorados
---     feridos_difere: "feridos" diferente de leves + graves
---     dia_difere:     dia da semana diferente do correspondente à data
+-- Inconsistências entre colunas. Esperado: 3823 | 0 | 0
 SELECT SUM(CASE WHEN TO_NUMBER(pessoas) <
                      TO_NUMBER(mortos) + TO_NUMBER(feridos_leves) + TO_NUMBER(feridos_graves)
                    + TO_NUMBER(ilesos) + TO_NUMBER(ignorados)
@@ -266,32 +228,29 @@ SELECT SUM(CASE WHEN TO_NUMBER(pessoas) <
                 THEN 1 ELSE 0 END)                                         AS dia_difere
   FROM stg_acidente;
 
--- 5.2 O mesmo conjunto de traçado escrito em ordens diferentes.
---     Esperado: 605 textos distintos, que correspondem a 230 combinações (ver script 03).
+-- Traçado escrito em ordens diferentes. Esperado: 605 textos (230 combinações reais)
 SELECT COUNT(DISTINCT tracado_via) AS qt_textos_tracado
   FROM stg_acidente;
 
--- Exemplo do mesmo par em duas grafias. Esperado: Aclive;Reta 1388 | Reta;Aclive 1963.
+-- Esperado: Aclive;Reta 1388 | Reta;Aclive 1963
 SELECT tracado_via, COUNT(*) AS qt
   FROM stg_acidente
  WHERE tracado_via IN ('Aclive;Reta', 'Reta;Aclive')
  GROUP BY tracado_via;
 
--- 5.3 Municípios com o mesmo nome em UFs diferentes. Esperado: 35.
---     Por isso a chave natural da DIM_LOCALIDADE é município + UF.
+-- Municípios homônimos em UFs diferentes. Esperado: 35
 SELECT COUNT(*) AS qt_municipios_homonimos
   FROM (SELECT municipio
           FROM stg_acidente
          GROUP BY municipio
         HAVING COUNT(DISTINCT uf) > 1);
 
--- 5.4 Espaços repetidos ou nas extremidades do nome do município. Esperado: 12.
+-- Município com espaços extras. Esperado: 12
 SELECT COUNT(*) AS qt_municipio_espacos
   FROM stg_acidente
  WHERE municipio <> TRIM(REGEXP_REPLACE(municipio, '\s+', ' '));
 
--- 5.5 Categorias com significado sobreposto ou pouco claro: 'Sol' e 'Céu Claro';
---     uso_solo 'Sim' e 'Não', que no dicionário da PRF significam Urbano e Rural.
+-- Categorias ambíguas ('Sol' x 'Céu Claro'; uso_solo Sim/Não = Urbano/Rural)
 SELECT 'condicao_metereologica' AS coluna, condicao_metereologica AS valor, COUNT(*) AS qt
   FROM stg_acidente GROUP BY condicao_metereologica
 UNION ALL
@@ -300,23 +259,18 @@ SELECT 'uso_solo', uso_solo, COUNT(*)
  ORDER BY 1, 3 DESC;
 
 
--- Parte 6. Problemas estruturais
-
--- 6.1 Codificação. Esperado: 46375.
---     Resultado 0 indica que o CSV foi importado como UTF-8 em vez de ISO-8859-1.
+-- Codificação. Esperado: 46375
 SELECT COUNT(*) AS qt_ceu_claro
   FROM stg_acidente
  WHERE condicao_metereologica = 'Céu Claro';
 
--- 6.2 Vírgula como separador decimal, o que impede a conversão direta para NUMBER.
---     Esperado: km 26675 | latitude 72492 | longitude 72485.
+-- Vírgula decimal. Esperado: 26675 | 72492 | 72485
 SELECT SUM(CASE WHEN INSTR(km, ',')        > 0 THEN 1 ELSE 0 END) AS km_com_virgula,
        SUM(CASE WHEN INSTR(latitude, ',')  > 0 THEN 1 ELSE 0 END) AS latitude_com_virgula,
        SUM(CASE WHEN INSTR(longitude, ',') > 0 THEN 1 ELSE 0 END) AS longitude_com_virgula
   FROM stg_acidente;
 
--- 6.3 Campo multivalorado (vários valores na mesma célula, separados por ';').
---     Esperado: no máximo 6 itens | 18741 linhas com mais de um item.
+-- Traçado multivalorado. Esperado: 6 | 18741
 SELECT MAX(REGEXP_COUNT(tracado_via, '[^;]+'))                      AS max_itens_tracado,
        SUM(CASE WHEN INSTR(tracado_via, ';') > 0 THEN 1 ELSE 0 END) AS linhas_multivaloradas
   FROM stg_acidente;

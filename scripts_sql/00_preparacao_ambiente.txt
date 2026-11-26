@@ -1,11 +1,6 @@
 PREPARAÇÃO DO AMBIENTE
-Projeto: Acidentes nas rodovias federais (PRF 2025), LAB BD V, Fatec Bauru
-Autor: Vitor Gimenes Magalhães (CST em Banco de Dados, LAB de Desenvolvimento de BD V, Profa. Mariana Rodrigues Santesso)
-
-Roteiro de instalação usado no projeto, executado uma única vez. Parte dos passos é
-feita nas telas do VirtualBox e do instalador, por isso este arquivo não deve ser
-executado como script. Comandos marcados com (root) rodam como root no terminal da VM.
-As senhas não estão registradas aqui; use senhas próprias.
+Autor: Vitor Gimenes Magalhães | LAB de Desenvolvimento de BD V, Fatec Bauru
+Roteiro de instalação da VM e do Oracle (não é um script executável). (root) = rodar como root.
 
 Ambiente
   Hospedeiro      Windows, 16 GB de RAM

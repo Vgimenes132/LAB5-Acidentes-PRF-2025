@@ -1,24 +1,9 @@
 -- 04_views.sql
--- Projeto: Acidentes nas rodovias federais (PRF 2025), LAB BD V, Fatec Bauru
--- Autor: Vitor Gimenes Magalhães (CST em Banco de Dados, LAB de Desenvolvimento de BD V, Profa. Mariana Rodrigues Santesso)
--- Views de consulta: base tratada, indicadores para gráficos e resumo de qualidade.
--- Executar o arquivo inteiro como script (F5), depois do 03_pkg_carga_acidente.sql.
---
--- VW_ACIDENTE         uma linha por ocorrência, com as descrições das dimensões e
---                     as medidas derivadas. É a base tratada e a origem do CSV publicado.
--- VW_IND_*            indicadores agregados para gráficos. Todas leem da VW_ACIDENTE,
---                     de modo que feridos, classificação e indicadores de qualidade
---                     são calculados em um único ponto.
--- VW_QUALIDADE_DADOS  resumo dos problemas tratados na carga.
---
--- Indicadores:
---   qt_acidentes             número de ocorrências
---   nr_mortos_100_acidentes  mortos a cada 100 acidentes (letalidade)
---   pc_acidentes_fatais      % de ocorrências com ao menos um morto
---   pc_participacao          % sobre o total de acidentes
+-- Autor: Vitor Gimenes Magalhães | LAB de Desenvolvimento de BD V, Fatec Bauru
+-- Views de consulta: base tratada (VW_ACIDENTE), indicadores (VW_IND_*) e qualidade.
 
 
--- Parte 1. VW_ACIDENTE (base tratada)
+-- Base tratada: uma linha por ocorrência, origem do CSV publicado
 CREATE OR REPLACE VIEW vw_acidente AS
 SELECT
     f.id_ocorrencia,
@@ -78,13 +63,13 @@ SELECT
     f.qt_ignorados,
     f.qt_veiculos,
 
-    -- medidas DERIVADAS (não armazenadas na fato)
+    -- medidas derivadas
     f.qt_feridos_leves + f.qt_feridos_graves               AS qt_feridos,
     f.qt_mortos + f.qt_feridos_leves + f.qt_feridos_graves AS qt_vitimas,
     pkg_carga_acidente.fn_classificacao(
         f.qt_mortos, f.qt_feridos_leves + f.qt_feridos_graves) AS ds_classificacao,
 
-    -- flags de qualidade DERIVADAS
+    -- indicadores de qualidade
     CASE WHEN f.qt_pessoas < f.qt_mortos + f.qt_feridos_leves + f.qt_feridos_graves
                            + f.qt_ilesos + f.qt_ignorados
          THEN 'S' ELSE 'N' END              AS fl_inconsistencia_pessoas,
@@ -108,9 +93,9 @@ COMMENT ON TABLE vw_acidente IS
   'Versão tratada e achatada: 1 linha por ocorrência, com medidas e flags derivadas. Fonte do CSV tratado.';
 
 
--- Parte 2. Indicadores para gráficos
+-- Indicadores (nr_mortos_100_acidentes = mortos a cada 100 acidentes)
 
--- 2.1 Evolução mensal (gráfico de linha/coluna)
+-- Mensal
 CREATE OR REPLACE VIEW vw_ind_mensal AS
 SELECT nr_ano,
        nr_mes,
@@ -126,7 +111,7 @@ SELECT nr_ano,
   FROM vw_acidente
  GROUP BY nr_ano, nr_mes, ds_ano_mes, nm_mes;
 
--- 2.2 Por UF e região (mapa / barras)
+-- UF e região
 CREATE OR REPLACE VIEW vw_ind_uf AS
 SELECT nm_regiao,
        sg_uf,
@@ -140,14 +125,13 @@ SELECT nm_regiao,
   FROM vw_acidente
  GROUP BY nm_regiao, sg_uf, nm_uf;
 
--- 2.3 Ranking de causas (barras horizontais / Pareto)
+-- Causas, com acumulado para Pareto
 CREATE OR REPLACE VIEW vw_ind_causa AS
 SELECT ds_causa,
        COUNT(*)                                                    AS qt_acidentes,
        SUM(qt_mortos)                                              AS qt_mortos,
        ROUND(100 * SUM(qt_mortos) / COUNT(*), 2)                   AS nr_mortos_100_acidentes,
        ROUND(100 * RATIO_TO_REPORT(COUNT(*)) OVER (), 2)           AS pc_participacao,
-       -- acumulado para curva de Pareto (causas em ordem decrescente)
        ROUND(100 * SUM(COUNT(*)) OVER (ORDER BY COUNT(*) DESC, ds_causa
                                        ROWS UNBOUNDED PRECEDING)
                  / SUM(COUNT(*)) OVER (), 2)                       AS pc_acumulado,
@@ -155,7 +139,7 @@ SELECT ds_causa,
   FROM vw_acidente
  GROUP BY ds_causa;
 
--- 2.4 Tipo de acidente (barras)
+-- Tipo de acidente
 CREATE OR REPLACE VIEW vw_ind_tipo_acidente AS
 SELECT ds_tipo_acidente,
        COUNT(*)                                                    AS qt_acidentes,
@@ -166,7 +150,7 @@ SELECT ds_tipo_acidente,
   FROM vw_acidente
  GROUP BY ds_tipo_acidente;
 
--- 2.5 Dia da semana x hora (mapa de calor: 7 x 24 = 168 células)
+-- Dia da semana x hora
 CREATE OR REPLACE VIEW vw_ind_semana_hora AS
 SELECT nr_dia_semana,
        nm_dia_semana,
@@ -177,7 +161,7 @@ SELECT nr_dia_semana,
   FROM vw_acidente
  GROUP BY nr_dia_semana, nm_dia_semana, nr_hora, ds_faixa_horaria;
 
--- 2.6 Condições: meteorologia x fase do dia (barras agrupadas)
+-- Meteorologia x fase do dia
 CREATE OR REPLACE VIEW vw_ind_condicoes AS
 SELECT ds_meteorologia,
        ds_fase_dia,
@@ -187,10 +171,7 @@ SELECT ds_meteorologia,
   FROM vw_acidente
  GROUP BY ds_meteorologia, ds_fase_dia;
 
--- 2.7 Traçado da via
--- ATENÇÃO: um acidente em "Curva;Declive" conta nas DUAS linhas.
--- Cada linha responde "quantos acidentes tinham este item"; a soma das
--- linhas é MAIOR que o total de acidentes. Não somar esta view.
+-- Traçado por item (um acidente pode contar em mais de um item; não somar as linhas)
 CREATE OR REPLACE VIEW vw_ind_tracado AS
 SELECT ds_item_tracado,
        COUNT(*)                                                    AS qt_acidentes,
@@ -215,8 +196,7 @@ UNPIVOT (fl_item FOR ds_item_tracado IN (
  WHERE fl_item = 'S'
  GROUP BY ds_item_tracado;
 
--- 2.8 Trechos críticos: BR + UF + faixa de 10 km
--- Exclui ocorrências sem BR informada.
+-- Trechos críticos: BR + UF + faixa de 10 km
 CREATE OR REPLACE VIEW vw_ind_trecho_br AS
 SELECT ds_br,
        sg_uf,
@@ -235,8 +215,7 @@ SELECT ds_br,
  GROUP BY ds_br, sg_uf, FLOOR(nr_km / 10);
 
 
--- Parte 3. Qualidade dos dados
--- Resumo do que foi tratado, no formato indicador e quantidade.
+-- Resumo da qualidade dos dados
 CREATE OR REPLACE VIEW vw_qualidade_dados AS
 SELECT 1 AS nr_ordem, 'Linhas na staging (arquivo original)' AS ds_indicador,
        (SELECT COUNT(*) FROM stg_acidente) AS qt FROM dual
@@ -276,54 +255,39 @@ SELECT 12, 'Traçado: combinações reais após normalização',
        (SELECT COUNT(*) FROM dim_tracado WHERE sk_tracado > 0) FROM dual;
 
 
--- Parte 4. Exportação da base tratada
---  1. Executar: SELECT * FROM vw_acidente ORDER BY id_ocorrencia;
---  2. Clicar com o botão direito no resultado > Exportar.
---  3. Formato csv, cabeçalho marcado, delimitador ";" e codificação UTF-8.
---     O delimitador deve ser ";" porque, na configuração brasileira, os números
---     saem com vírgula decimal e uma vírgula como delimitador dividiria as coordenadas.
---  4. Salvar como Acidentes_PRF_2025_tratado.csv.
+-- Exportação: SELECT * FROM vw_acidente, exportar como CSV (";" e UTF-8)
 
 
--- Parte 5. Conferência
--- Valores esperados calculados diretamente do CSV de 2025.
-
--- 5.1 Linhas da base tratada. Esperado: 72529.
+-- Conferência
+-- Esperado: 72529
 SELECT COUNT(*) AS qt FROM vw_acidente;
 
--- 5.2 Classificação calculada. Esperado: Com Vítimas Feridas 56181 |
---     Sem Vítimas 11138 | Com Vítimas Fatais 5210 (5209 da fonte e a linha 'NA', com 1 morto).
+-- Esperado: Feridas 56181 | Sem Vítimas 11138 | Fatais 5210
 SELECT ds_classificacao, COUNT(*) AS qt
   FROM vw_acidente
  GROUP BY ds_classificacao
  ORDER BY qt DESC;
 
--- 5.3 Qualidade. Esperado: staging 72529 | fato 72529 | rejeitadas 0 | avisos 1 |
---     pessoas inconsistente 3823 | coordenada imprecisa 52 | coordenada ausente 0 |
---     BR não informada 167 | meteorologia 1000 | unidade 2 |
---     traçado 605 textos e 230 combinações.
+-- Esperado: 72529 | 72529 | 0 | 1 | 3823 | 52 | 0 | 167 | 1000 | 2 | 605 | 230
 SELECT ds_indicador, qt FROM vw_qualidade_dados ORDER BY nr_ordem;
 
--- 5.4 Mensal. Esperado: 12 linhas; jan/2025 com 5528 acidentes e 418 mortos;
---     mês com mais acidentes, dez/2025 (6788).
+-- Esperado: 12 meses; jan 5528 acidentes e 418 mortos; maior dez (6788)
 SELECT ds_ano_mes, qt_acidentes, qt_mortos, nr_mortos_100_acidentes
   FROM vw_ind_mensal
  ORDER BY ds_ano_mes;
 
--- 5.5 Três principais causas. Esperado: Ausência de reação do condutor 11469 |
---     Reação tardia ou ineficiente do condutor 10799 |
---     Acessar a via sem observar a presença dos outros veículos 7097.
+-- Esperado: 11469 | 10799 | 7097
 SELECT nr_ranking, ds_causa, qt_acidentes, pc_participacao, pc_acumulado
   FROM vw_ind_causa
  WHERE nr_ranking <= 3
  ORDER BY nr_ranking;
 
--- 5.6 Traçado, esperado: Reta 53014 | Curva 13140 | Declive 7912 | Aclive 6057
+-- Esperado: Reta 53014 | Curva 13140 | Declive 7912 | Aclive 6057
 SELECT ds_item_tracado, qt_acidentes, pc_acidentes_com_item
   FROM vw_ind_tracado
  ORDER BY qt_acidentes DESC;
 
--- 5.7 Trecho mais crítico, esperado: BR-101 / SC - km 200 a 210 com 575
+-- Esperado no topo: BR-101 / SC - km 200 a 210, 575
 SELECT ds_trecho, qt_acidentes, qt_mortos
   FROM vw_ind_trecho_br
  WHERE nr_ranking_acidentes <= 5
