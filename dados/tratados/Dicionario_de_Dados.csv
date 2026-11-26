@@ -1,0 +1,61 @@
+﻿COLUNA;TIPO;DESCRICAO
+ID_OCORRENCIA;Inteiro;Identificador da ocorrência atribuído pela PRF (único por acidente)
+DT_ACIDENTE;Data (AAAA-MM-DD);Data do acidente
+NR_ANO;Inteiro;Ano do acidente
+NR_TRIMESTRE;Inteiro (1 a 4);Trimestre do ano
+NR_MES;Inteiro (1 a 12);Mês do acidente
+NM_MES;Texto;Nome do mês por extenso
+DS_ANO_MES;Texto (AAAA-MM);Ano e mês, em formato ordenável para gráficos
+NR_DIA_SEMANA;Inteiro (1 a 7);Dia da semana no padrão ISO: 1 = segunda-feira ... 7 = domingo
+NM_DIA_SEMANA;Texto;Nome do dia da semana
+FL_FIM_SEMANA;S/N;Indica se o acidente ocorreu em sábado ou domingo
+HR_ACIDENTE;Texto (HH:MI);Horário do acidente
+NR_HORA;Inteiro (0 a 23);Hora cheia do acidente
+DS_FAIXA_HORARIA;Texto;Faixa do dia: Madrugada (00h-05h), Manhã (06h-11h), Tarde (12h-17h), Noite (18h-23h)
+NR_ORDEM_FAIXA;Inteiro (1 a 4);Ordem da faixa horária, para ordenar gráficos
+NM_REGIAO;Texto;Região do Brasil (Norte, Nordeste, Centro-Oeste, Sudeste, Sul)
+SG_UF;Texto (2);Sigla do estado
+NM_UF;Texto;Nome do estado
+NM_MUNICIPIO;Texto;Município do acidente, em maiúsculas e sem espaços extras
+DS_BR;Texto;"Rodovia no formato BR-000; 'Não informada' quando a fonte trazia BR = 0"
+NR_BR;Inteiro;"Número da rodovia federal; vazio quando não informada"
+NR_KM;Decimal;"Quilômetro da rodovia; vazio quando a rodovia não foi informada"
+NR_LATITUDE;Decimal;Latitude do local (graus decimais)
+NR_LONGITUDE;Decimal;Longitude do local (graus decimais)
+DS_REGIONAL;Texto;Superintendência regional da PRF responsável
+DS_DELEGACIA;Texto;Delegacia da PRF responsável
+DS_UOP;Texto;Unidade operacional da PRF responsável
+DS_CAUSA;Texto;Causa principal do acidente, conforme registro da PRF
+DS_TIPO_ACIDENTE;Texto;Tipo do acidente (colisão traseira, tombamento, atropelamento etc.)
+DS_METEOROLOGIA;Texto;"Condição do tempo no momento; 'Não informado' quando a fonte trazia 'Ignorado'"
+DS_FASE_DIA;Texto;Fase do dia: Amanhecer, Pleno dia, Anoitecer, Plena Noite
+DS_SENTIDO_VIA;Texto;Sentido da via: Crescente, Decrescente ou Não informado
+DS_TIPO_PISTA;Texto;Tipo de pista: Simples, Dupla ou Múltipla
+DS_USO_SOLO;Texto;Área do acidente: Urbano ou Rural (convertido de Sim/Não da fonte)
+DS_TRACADO;Texto;"Traçado da via normalizado: itens em ordem alfabética separados por ';'"
+FL_ACLIVE;S/N;Traçado inclui aclive
+FL_CURVA;S/N;Traçado inclui curva
+FL_DECLIVE;S/N;Traçado inclui declive
+FL_DESVIO_TEMPORARIO;S/N;Traçado inclui desvio temporário
+FL_EM_OBRAS;S/N;Trecho em obras
+FL_INTERSECAO_VIAS;S/N;Traçado inclui interseção de vias
+FL_PONTE;S/N;Traçado inclui ponte
+FL_RETA;S/N;Traçado inclui reta
+FL_RETORNO_REGULAMENTADO;S/N;Traçado inclui retorno regulamentado
+FL_ROTATORIA;S/N;Traçado inclui rotatória
+FL_TUNEL;S/N;Traçado inclui túnel
+FL_VIADUTO;S/N;Traçado inclui viaduto
+QT_ACIDENTES;Inteiro (sempre 1);Contador de ocorrências, para somar em ferramentas de gráfico
+QT_PESSOAS;Inteiro;Pessoas envolvidas, conforme informado pela PRF
+QT_MORTOS;Inteiro;Pessoas mortas
+QT_FERIDOS_LEVES;Inteiro;Pessoas com ferimentos leves
+QT_FERIDOS_GRAVES;Inteiro;Pessoas com ferimentos graves
+QT_ILESOS;Inteiro;Pessoas que saíram ilesas
+QT_IGNORADOS;Inteiro;Pessoas com estado físico não informado
+QT_VEICULOS;Inteiro;Veículos envolvidos
+QT_FERIDOS;Inteiro;Total de feridos (leves + graves), calculado
+QT_VITIMAS;Inteiro;Total de vítimas (mortos + feridos), calculado
+DS_CLASSIFICACAO;Texto;Gravidade calculada: Com Vítimas Fatais, Com Vítimas Feridas ou Sem Vítimas
+FL_INCONSISTENCIA_PESSOAS;S/N;S quando QT_PESSOAS é menor que a soma de mortos, feridos, ilesos e ignorados
+FL_COORDENADA_IMPRECISA;S/N;S quando latitude ou longitude é um número inteiro (localização aproximada)
+FL_COORDENADA_AUSENTE;S/N;S quando a coordenada está ausente ou fora do território brasileiro

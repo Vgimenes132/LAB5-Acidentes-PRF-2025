@@ -1,0 +1,122 @@
+PREPARAÇÃO DO AMBIENTE
+Projeto: Acidentes nas rodovias federais (PRF 2025), LAB BD V, Fatec Bauru
+Autor: Vitor Gimenes Magalhães (CST em Banco de Dados, LAB de Desenvolvimento de BD V, Profa. Mariana Rodrigues Santesso)
+
+Roteiro de instalação usado no projeto, executado uma única vez. Parte dos passos é
+feita nas telas do VirtualBox e do instalador, por isso este arquivo não deve ser
+executado como script. Comandos marcados com (root) rodam como root no terminal da VM.
+As senhas não estão registradas aqui; use senhas próprias.
+
+Ambiente
+  Hospedeiro      Windows, 16 GB de RAM
+  Virtualização   Oracle VirtualBox 7.2.20
+  Sistema da VM   Oracle Linux 8 (ISO 8.9, atualizado para 8.10)
+  Banco           Oracle AI Database 26ai Free 23.26.3
+                  (CDB FREE, PDB FREEPDB1, listener na porta 1521)
+  Cliente         Oracle SQL Developer 26.2.0 (RPM para Linux, com OpenJDK 17)
+
+
+1. Máquina virtual (VirtualBox)
+-------------------------------
+ - Novo > ISO OracleLinux-R8-U9-x86_64-dvd.iso > Linux / Oracle Linux (64-bit)
+ - Marcar "Pular instalação desassistida"
+ - Memória: até 8192 MB (hospedeiro de 16 GB); CPU: 2 a 4 núcleos
+ - Disco: VDI dinamicamente alocado, 60 GB
+     O padrão de 20 GB não é suficiente: o instalador do banco exige ao menos
+     7680 MB livres em /opt, além do espaço dos datafiles.
+ - Rede: NAT, com redirecionamento de portas
+     host 1521 -> convidado 1521 (Oracle)
+     host 2222 -> convidado 22   (SSH, opcional)
+ - Instalação do Linux: "Server with GUI", particionamento automático,
+   KDUMP desativado, placa de rede ligada e usuário administrador criado.
+
+
+2. Pós-instalação do Linux
+--------------------------
+sudo dnf update -y
+sudo reboot
+
+# Adicionais para Convidado (menu Dispositivos > Inserir imagem de CD dos Adicionais)
+sudo dnf install -y kernel-uek-devel-$(uname -r) gcc make perl elfutils-libelf-devel bzip2
+sudo sh /run/media/$USER/VBox_GAs_*/VBoxLinuxAdditions.run
+sudo reboot
+
+
+3. Ampliação do disco, se a VM foi criada com 20 GB (root)
+----------------------------------------------------------
+# a) Com a VM desligada: VirtualBox > Arquivo > Ferramentas > Gerenciador de Mídia,
+#    selecionar o .vdi, Tamanho = 60 GB, Aplicar.
+# b) Na VM, confirmar antes no lsblk que o LVM está em /dev/sda2.
+lsblk
+dnf -y install cloud-utils-growpart
+growpart /dev/sda 2
+pvresize /dev/sda2
+lvextend -r -l +100%FREE /dev/ol/root
+df -h /
+
+
+4. Oracle AI Database 26ai Free (root)
+--------------------------------------
+cd ~/Downloads
+wget https://download.oracle.com/otn-pub/otn_software/db-free/oracle-ai-database-free-26ai-23.26.3-1.el8.x86_64.rpm
+
+# Conferência do arquivo com o SHA-256 publicado pela Oracle:
+#   879eb7ffc9c8c797dafc42974afaff7714c4069b27cc4adc0827291244f05d97
+sha256sum oracle-ai-database-free-26ai-23.26.3-1.el8.x86_64.rpm
+
+dnf -y install oracle-ai-database-preinstall-26ai
+dnf -y localinstall ~/Downloads/oracle-ai-database-free-26ai-23.26.3-1.el8.x86_64.rpm
+
+sed -i 's/^LISTENER_PORT=.*/LISTENER_PORT=1521/' /etc/sysconfig/oracle-free-26ai.conf
+grep LISTENER_PORT /etc/sysconfig/oracle-free-26ai.conf
+
+/etc/init.d/oracle-free-26ai configure        # define a senha de SYS, SYSTEM e PDBADMIN
+
+systemctl daemon-reload
+systemctl enable oracle-free-26ai
+firewall-cmd --permanent --add-port=1521/tcp
+firewall-cmd --reload
+/etc/init.d/oracle-free-26ai status           # LISTENER e FREE devem estar RUNNING
+ss -tlnp | grep 1521                          # tnslsnr escutando na porta 1521
+
+
+5. Abertura automática do PDB (SQL*Plus como SYSDBA)
+----------------------------------------------------
+su - oracle
+export ORACLE_SID=FREE ORAENV_ASK=NO
+. oraenv
+sqlplus / as sysdba
+
+  SHOW PDBS                                     -- FREEPDB1 deve aparecer como READ WRITE
+  ALTER PLUGGABLE DATABASE FREEPDB1 SAVE STATE;
+  EXIT;
+
+# O usuário do projeto (ACIDENTES) é criado no início do 01_staging.sql.
+
+
+6. SQL Developer na VM (root para instalar, usuário comum para abrir)
+---------------------------------------------------------------------
+dnf -y install java-17-openjdk
+dnf -y localinstall ~/Downloads/sqldeveloper-26.2.0-186.2220.noarch.rpm
+java -version
+# Como usuário comum:
+/opt/sqldeveloper/sqldeveloper.sh
+#   Conexão: host localhost, porta 1521, nome do serviço FREEPDB1
+#   Preferências > Banco de Dados > NLS > Formato de Data = DD/MM/YYYY HH24:MI:SS
+#   Preferências > Ambiente > Codificação = UTF-8 (necessário para abrir os scripts .sql)
+
+
+7. Snapshot
+-----------
+ VirtualBox > Máquina > Tirar Snapshot > "AmbienteCompleto".
+ Desligar sempre pelo Linux (poweroff), e não pela opção "Desligar a máquina".
+
+
+Ordem de execução dos scripts do projeto
+----------------------------------------
+ 01_staging.sql              usuário, staging, importação do CSV e conferência
+ 01b_analise_inicial.sql     diagnóstico do dado bruto (somente leitura)
+ 02_dimensoes_fato.sql       modelo estrela, dimensões geradas e registros 0
+ 03_pkg_carga_acidente.sql   limpeza, registro de erros e carga em transação única
+ 04_views.sql                base tratada (VW_ACIDENTE), indicadores e qualidade
+ 05_testes_integridade.sql   testes de funcionamento e de integridade

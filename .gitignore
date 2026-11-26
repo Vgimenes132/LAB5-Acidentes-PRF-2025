@@ -1,0 +1,14 @@
+# CSV original descompactado (o repositório guarda a versão .zip)
+dados/original/datatran2025.csv
+
+# Material de orientação da disciplina (uso interno)
+Orientações/
+
+# Arquivos temporários
+~$*
+*.tmp
+Thumbs.db
+desktop.ini
+
+# Pacotes de entrega no Teams (gerados localmente)
+entrega_teams/

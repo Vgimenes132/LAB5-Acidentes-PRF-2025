@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acidentes nas Rodovias Federais 2025</title>
+<meta name="description" content="Painel público com os acidentes atendidos pela Polícia Rodoviária Federal em 2025: quando, onde e por que acontecem. Dados abertos tratados, para motoristas, órgãos públicos, jornalistas e pesquisadores.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M12 26 15 6h2l3 20' stroke='%23fff' stroke-width='2' fill='none'/%3E%3Cpath d='M16 10v3m0 4v3' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --surface-2: #f0efec;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #6f6d68;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --accent-ink: #1c5cab;
+  --focus: #2a78d6;
+  --shadow: 0 1px 2px rgba(11,11,11,.04), 0 4px 16px rgba(11,11,11,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --surface-2: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #9b998f;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --accent-ink: #86b6ef;
+    --focus: #6da7ec;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --surface-2: #262624;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #9b998f;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --accent-ink: #86b6ef;
+  --focus: #6da7ec;
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--text-primary);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+/* ---------- cabeçalho ---------- */
+header.top { padding: 40px 0 8px; }
+.kicker { font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 8px; }
+h1 { font-size: clamp(28px, 4.4vw, 44px); line-height: 1.12; margin: 0 0 12px; letter-spacing: -.01em; text-wrap: balance; }
+.lede { font-size: 18px; color: var(--text-secondary); max-width: 760px; margin: 0; text-wrap: pretty; }
+
+/* ---------- barra de filtros ---------- */
+.filters {
+  position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--page) 92%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border); margin-top: 24px;
+}
+.filters .wrap { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding-top: 12px; padding-bottom: 12px; }
+.field { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); }
+select, input[type="search"] {
+  font: inherit; font-size: 15px; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-height: 38px;
+}
+select { padding-right: 28px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-1); }
+.seg button {
+  font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--text-secondary);
+  padding: 8px 14px; cursor: pointer; min-height: 38px;
+}
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text-primary); font-weight: 600; }
+.spacer { flex: 1; }
+.icon-btn {
+  font: inherit; font-size: 14px; background: var(--surface-1); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer; min-height: 38px;
+}
+
+/* ---------- seções e cartões ---------- */
+section { padding: 36px 0 8px; }
+h2 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.005em; }
+.sec-sub { color: var(--text-secondary); margin: 0 0 20px; max-width: 760px; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.span2 { grid-column: span 2; }
+@media (max-width: 860px) { .g2, .g3 { grid-template-columns: minmax(0, 1fr); } .span2 { grid-column: auto; } }
+.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 16px; margin: 0 0 2px; }
+.card .sub { font-size: 14px; color: var(--text-secondary); margin: 0 0 16px; }
+.note { font-size: 13px; color: var(--text-muted); margin: 12px 0 0; }
+
+/* ---------- números ---------- */
+.kpis { display: grid; grid-template-columns: 1.4fr repeat(4, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 960px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpis .hero { grid-column: span 2; } }
+.stat .label { font-size: 14px; color: var(--text-secondary); margin: 0 0 6px; }
+.stat .value { font-size: 30px; font-weight: 650; line-height: 1.1; margin: 0; }
+.stat .ctx { font-size: 13px; color: var(--text-muted); margin: 6px 0 0; }
+.hero .value { font-size: 52px; letter-spacing: -.02em; }
+
+/* ---------- destaques ---------- */
+.highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.hl { border-left: 3px solid var(--series-1); padding: 4px 0 4px 14px; }
+.hl p { margin: 0; }
+.hl .t { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.hl .v { font-size: 17px; font-weight: 600; margin: 2px 0; }
+.hl .d { font-size: 14px; color: var(--text-secondary); }
+
+/* ---------- barras horizontais (HTML) ---------- */
+.hbars { display: grid; gap: 10px; }
+.hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; border-radius: 6px; padding: 2px 4px; margin: 0 -4px; cursor: default; }
+.hbar:hover, .hbar:focus-visible { background: var(--surface-2); }
+.hbar .nm { font-size: 14px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar .val { font-size: 14px; color: var(--text-secondary); font-variant-numeric: tabular-nums; text-align: right; }
+.hbar .track { grid-column: 1 / -1; height: 12px; }
+.hbar .fill { height: 12px; border-radius: 0 4px 4px 0; background: var(--series-1); min-width: 2px; }
+.hbar .fill.alt { background: var(--series-2); }
+
+/* ---------- colunas (SVG) ---------- */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: inherit; }
+
+/* ---------- mapa de calor ---------- */
+.heat { display: grid; grid-template-columns: 40px repeat(24, minmax(0, 1fr)); gap: 2px; font-size: 12px; }
+.heat .rl { color: var(--text-secondary); display: flex; align-items: center; }
+.heat .cl { color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+.heat .cell { aspect-ratio: 1 / 1; border-radius: 3px; min-height: 10px; }
+.heat .cell:hover, .heat .cell:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 0; }
+.ramp-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+.ramp-legend .sw { display: flex; gap: 2px; }
+.ramp-legend .sw span { width: 22px; height: 10px; border-radius: 2px; }
+
+/* ---------- mapa ---------- */
+.map-wrap { position: relative; }
+#mapa { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--surface-1); }
+
+/* ---------- tabelas ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--grid); }
+th { font-weight: 600; color: var(--text-secondary); font-size: 13px; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; }
+details.tv { margin-top: 14px; }
+details.tv summary { cursor: pointer; font-size: 13px; color: var(--accent-ink); }
+details.tv[open] summary { margin-bottom: 8px; }
+
+/* ---------- busca de município ---------- */
+.muni-result { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.muni-result .stat { background: var(--surface-2); border-radius: 10px; padding: 12px; }
+.muni-result .value { font-size: 24px; }
+.empty { color: var(--text-muted); font-size: 14px; margin-top: 12px; }
+
+/* ---------- tooltip ---------- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .08s;
+  background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.4; max-width: 280px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.14);
+}
+#tip b { font-weight: 600; }
+#tip .r { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* ---------- textos finais ---------- */
+.prose { max-width: 820px; }
+.prose p, .prose li { color: var(--text-secondary); }
+.prose h3 { font-size: 17px; margin: 24px 0 6px; color: var(--text-primary); }
+.dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0 0; }
+.dl a { display: block; text-decoration: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; color: var(--text-primary); }
+.dl a:hover { border-color: var(--series-1); }
+.dl a b { display: block; font-size: 15px; }
+.dl a span { font-size: 13px; color: var(--text-secondary); }
+footer { padding: 40px 0 56px; color: var(--text-muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 40px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header class="top wrap">
+  <p class="kicker">Dados abertos da PRF · projeto de extensão Fatec Bauru</p>
+  <h1>Acidentes nas rodovias federais em 2025</h1>
+  <p class="lede">Quando, onde e por que acontecem os acidentes atendidos pela Polícia Rodoviária Federal. Escolha um estado para ver os números da sua região.</p>
+</header>
+
+<div class="filters" role="region" aria-label="Filtros do painel">
+  <div class="wrap">
+    <label class="field">Estado
+      <select id="f-uf" aria-label="Escolha o estado"></select>
+    </label>
+    <div class="field" role="group" aria-label="Medida exibida nos gráficos">
+      <span>Mostrar</span>
+      <div class="seg" id="f-medida">
+        <button type="button" data-v="a" aria-pressed="true">Acidentes</button>
+        <button type="button" data-v="m" aria-pressed="false">Mortes</button>
+      </div>
+    </div>
+    <span class="spacer"></span>
+    <button type="button" class="icon-btn" id="tema" aria-label="Alternar tema claro ou escuro">◐ Tema</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <section aria-labelledby="s-resumo">
+    <h2 id="s-resumo" class="sr">Resumo</h2>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section aria-labelledby="s-dest">
+    <h2 id="s-dest">O que os dados mostram</h2>
+    <p class="sec-sub" id="dest-sub">Os pontos que mais chamam atenção no recorte escolhido.</p>
+    <div class="highlights" id="destaques"></div>
+  </section>
+
+  <section aria-labelledby="s-quando">
+    <h2 id="s-quando">Quando acontecem</h2>
+    <p class="sec-sub">A quantidade de acidentes muda ao longo do ano e do dia. Os mais graves se concentram à noite e de madrugada.</p>
+    <div class="grid g2">
+      <div class="card span2">
+        <h3 id="t-mes">Por mês</h3>
+        <p class="sub" id="st-mes"></p>
+        <div class="chart" id="c-mes"></div>
+        <details class="tv"><summary>Ver dados em tabela</summary><div class="table-scroll" id="tb-mes"></div></details>
+      </div>
+      <div class="card span2">
+        <h3 id="t-heat">Dia da semana × hora do dia</h3>
+        <p class="sub">Cada quadrado é uma hora de um dia da semana. Quanto mais escuro, mais ocorrências.</p>
+        <div class="heat" id="c-heat" role="img"></div>
+        <div class="ramp-legend" id="lg-heat"></div>
+        <details class="tv"><summary>Ver dados em tabela</summary><div class="table-scroll" id="tb-heat"></div></details>
+      </div>
+      <div class="card">
+        <h3>Gravidade por período do dia</h3>
+        <p class="sub">Mortes a cada 100 acidentes</p>
+        <div class="hbars" id="c-faixa"></div>
+        <p class="note">Leitura: na madrugada há menos acidentes, mas cada um tende a ser muito mais grave.</p>
+      </div>
+      <div class="card">
+        <h3>Fim de semana × dias úteis</h3>
+        <p class="sub">Mortes a cada 100 acidentes</p>
+        <div class="hbars" id="c-fds"></div>
+        <p class="note" id="n-fds"></p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-onde">
+    <h2 id="s-onde">Onde acontecem</h2>
+    <p class="sec-sub">Cada ponto do mapa reúne os acidentes de uma área de cerca de 11 km × 11 km. As linhas que aparecem são as próprias rodovias federais.</p>
+    <div class="grid g2">
+      <div class="card">
+        <h3 id="t-mapa">Mapa dos acidentes</h3>
+        <p class="sub" id="st-mapa"></p>
+        <div class="map-wrap"><canvas id="mapa" width="600" height="560" role="img" aria-label="Mapa de pontos com a concentração de acidentes"></canvas></div>
+        <div class="ramp-legend" id="lg-mapa"></div>
+      </div>
+      <div class="card">
+        <h3 id="t-rank"></h3>
+        <p class="sub" id="st-rank"></p>
+        <div class="hbars" id="c-rank"></div>
+        <details class="tv"><summary>Ver dados em tabela</summary><div class="table-scroll" id="tb-rank"></div></details>
+      </div>
+      <div class="card span2">
+        <h3>Trechos mais críticos</h3>
+        <p class="sub" id="st-trecho">Rodovia e faixa de 10 km com mais ocorrências.</p>
+        <div class="table-scroll" id="c-trecho"></div>
+        <p class="note">Trechos com mais tráfego tendem a ter mais acidentes. Use esta lista para saber onde redobrar a atenção, não como uma nota da rodovia.</p>
+      </div>
+      <div class="card span2">
+        <h3>Consulte um município</h3>
+        <p class="sub">Digite o nome da cidade para ver os acidentes registrados nas rodovias federais que passam por ela.</p>
+        <label class="field" style="max-width:520px">
+          <span class="sr">Município</span>
+          <input type="search" id="f-muni" list="l-muni" placeholder="Ex.: BAURU (SP)" style="width:100%" autocomplete="off">
+        </label>
+        <datalist id="l-muni"></datalist>
+        <div id="muni-out"><p class="empty">Nenhum município escolhido.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-porque">
+    <h2 id="s-porque">Por que acontecem</h2>
+    <p class="sec-sub">A causa principal registrada pela PRF, o tipo de acidente e as condições do local no momento.</p>
+    <div class="grid g2">
+      <div class="card span2">
+        <h3 id="t-causa">As 10 causas mais registradas</h3>
+        <p class="sub" id="st-causa"></p>
+        <div class="hbars" id="c-causa"></div>
+        <details class="tv"><summary>Ver todas as causas em tabela</summary><div class="table-scroll" id="tb-causa"></div></details>
+      </div>
+      <div class="card">
+        <h3 id="t-tipo">Tipos de acidente</h3>
+        <p class="sub" id="st-tipo"></p>
+        <div class="hbars" id="c-tipo"></div>
+        <details class="tv"><summary>Ver dados em tabela</summary><div class="table-scroll" id="tb-tipo"></div></details>
+      </div>
+      <div class="card">
+        <h3>Os tipos mais letais</h3>
+        <p class="sub">Mortes a cada 100 acidentes (tipos com ao menos 30 ocorrências)</p>
+        <div class="hbars" id="c-letal"></div>
+      </div>
+      <div class="card">
+        <h3 id="t-meteo">Condição do tempo</h3>
+        <p class="sub" id="st-meteo"></p>
+        <div class="hbars" id="c-meteo"></div>
+        <p class="note">A maior parte dos acidentes acontece com tempo bom: o risco não está só na chuva.</p>
+      </div>
+      <div class="card">
+        <h3 id="t-trac">Traçado da via</h3>
+        <p class="sub" id="st-trac"></p>
+        <div class="hbars" id="c-trac"></div>
+        <p class="note">Um mesmo acidente pode estar em &quot;curva&quot; e &quot;declive&quot; ao mesmo tempo, então as barras não somam o total.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-dados" class="prose">
+    <h2 id="s-dados">Baixe os dados e use você também</h2>
+    <p>Toda a base tratada é aberta. Cada linha é um acidente, com 60 colunas explicadas no dicionário de dados.</p>
+    <div class="dl">
+      <a href="https://github.com/Vgimenes132/LAB5-Acidentes-PRF-2025/raw/main/dados/tratados/Acidentes_PRF_2025_tratado.xlsx"><b>Planilha Excel</b><span>Abre direto no Excel ou LibreOffice · 72.529 linhas</span></a>
+      <a href="https://github.com/Vgimenes132/LAB5-Acidentes-PRF-2025/raw/main/dados/tratados/Acidentes_PRF_2025_tratado.csv.zip"><b>CSV compactado</b><span>Para Power BI, Python, R · UTF-8, separador &quot;;&quot;</span></a>
+      <a href="https://github.com/Vgimenes132/LAB5-Acidentes-PRF-2025/blob/main/dados/tratados/Dicionario_de_Dados.csv"><b>Dicionário de dados</b><span>O que significa cada coluna</span></a>
+      <a href="https://github.com/Vgimenes132/LAB5-Acidentes-PRF-2025"><b>Repositório completo</b><span>Scripts SQL, modelo do banco e relatórios</span></a>
+    </div>
+
+    <h3>Como usar a planilha</h3>
+    <ul>
+      <li>Para contar acidentes, some a coluna <code>QT_ACIDENTES</code>; para mortes, some <code>QT_MORTOS</code>.</li>
+      <li>Colunas que começam com <code>FL_</code> são marcações de sim (S) ou não (N), como <code>FL_CURVA</code> ou <code>FL_FIM_SEMANA</code>.</li>
+      <li>Use os filtros do Excel por estado (<code>SG_UF</code>), município, rodovia (<code>DS_BR</code>) ou mês.</li>
+    </ul>
+
+    <h3>Cuidados ao interpretar</h3>
+    <ul>
+      <li>A base cobre só as <strong>rodovias federais</strong> atendidas pela PRF. Estradas estaduais, municipais e ruas urbanas não estão incluídas.</li>
+      <li>Mais acidentes em um estado ou trecho não significa, sozinho, estrada pior: quem tem mais quilômetros de rodovia e mais trânsito tende a ter mais registros.</li>
+      <li>3.823 acidentes têm o total de pessoas menor que a soma de mortos, feridos e ilesos, e 52 têm localização aproximada. Esses problemas vêm da própria fonte. Os registros foram mantidos e marcados nas colunas <code>FL_INCONSISTENCIA_PESSOAS</code> e <code>FL_COORDENADA_IMPRECISA</code>.</li>
+    </ul>
+
+    <h3>Sobre o projeto</h3>
+    <p>Este painel faz parte do Projeto de Curricularização da Extensão &quot;Transformar Base de Dados Públicas em Banco de Dados Acessível à Sociedade&quot;, da disciplina Laboratório de Desenvolvimento de Banco de Dados V, do CST em Banco de Dados da Fatec Bauru. O arquivo original da PRF foi tratado e organizado em um banco de dados Oracle. Os números exibidos aqui saem dessa base tratada: nenhum acidente foi perdido no processo.</p>
+    <p>Fonte: Polícia Rodoviária Federal, <a href="https://www.gov.br/prf/pt-br/acesso-a-informacao/dados-abertos/dados-abertos-da-prf">Dados Abertos da PRF</a>, arquivo de acidentes de 2025 agrupados por ocorrência.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    Desenvolvido por Vitor Gimenes Magalhães · Fatec Bauru · Orientação: Profa. Mariana Rodrigues Santesso · 2026.
+    Dados: PRF (licença de dados abertos do governo federal).
+  </div>
+</footer>
+
+<div id="tip" role="tooltip"></div>
+
+<script src="dados.js"></script>
+<script src="painel.js"></script>
+</body>
+</html>

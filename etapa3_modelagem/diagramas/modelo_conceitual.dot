@@ -1,0 +1,51 @@
+graph conceitual {
+  layout=twopi; root="ACIDENTE"; ranksep="2.1 1.6"; overlap=false; splines=true;
+  bgcolor="white"; pad=0.4;
+  label=<<B>Modelo Conceitual (Diagrama ER, notação de Chen)</B><BR/><FONT POINT-SIZE="13">Acidentes nas rodovias federais, PRF 2025</FONT>>;
+  labelloc=t; fontname="DejaVu Sans"; fontsize=20;
+  node [fontname="DejaVu Sans", fontsize=13];
+  edge [fontname="DejaVu Sans", fontsize=13, color="#444444"];
+
+  ACIDENTE [shape=box, style="filled,bold", fillcolor="#FDE2C4", penwidth=2.5, fontsize=16, label=<<B>ACIDENTE</B>>];
+
+  // atributos do acidente
+  node [shape=ellipse, style=filled, fillcolor="#FFF7EE", fontsize=11];
+  a_id  [label=<<U>id_ocorrencia</U>>];
+  a_rod [label="rodovia (BR) e km"];
+  a_geo [label="latitude e longitude"];
+  a_pes [label="pessoas, mortos, feridos,\nilesos, ignorados"];
+  a_vei [label="veículos"];
+  ACIDENTE -- a_id; ACIDENTE -- a_rod; ACIDENTE -- a_geo; ACIDENTE -- a_pes; ACIDENTE -- a_vei;
+
+  // entidades e relacionamentos
+  node [shape=box, style="filled", fillcolor="#D6E6F5", penwidth=1.5, fontsize=13];
+  DATA [label=<<B>DATA</B>>]; HORARIO [label=<<B>HORÁRIO</B>>]; LOCALIDADE [label=<<B>LOCALIDADE</B>>];
+  UNIDADE [label=<<B>UNIDADE PRF</B>>]; CAUSA [label=<<B>CAUSA</B>>]; TIPO [label=<<B>TIPO DE ACIDENTE</B>>];
+  METEO [label=<<B>CONDIÇÃO<BR/>METEOROLÓGICA</B>>]; VIA [label=<<B>CONDIÇÃO DA VIA</B>>]; TRACADO [label=<<B>TRAÇADO DA VIA</B>>];
+
+  node [shape=diamond, style=filled, fillcolor="#E8F2DC", fontsize=11, penwidth=1.2];
+  r1 [label="ocorre\nem"]; r2 [label="ocorre\nàs"]; r3 [label="acontece\nem"]; r4 [label="é atendido\npor"];
+  r5 [label="tem como\ncausa"]; r6 [label="é do\ntipo"]; r7 [label="ocorre\nsob"]; r8 [label="ocorre\nem"]; r9 [label="ocorre\nem"];
+
+  ACIDENTE -- r1 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r1 -- DATA [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r2 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r2 -- HORARIO [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r3 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r3 -- LOCALIDADE [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r4 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r4 -- UNIDADE [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r5 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r5 -- CAUSA [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r6 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r6 -- TIPO [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r7 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r7 -- METEO [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r8 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r8 -- VIA [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+  ACIDENTE -- r9 [headlabel="N", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14]; r9 -- TRACADO [headlabel="1", labeldistance=1.8, labelfontcolor="#B03A2E", labelfontsize=14];
+
+  // atributos das entidades
+  node [shape=ellipse, style=filled, fillcolor="#F3F8FC", fontsize=10, penwidth=1];
+  d1 [label=<<U>data</U>>]; d2 [label="mês, dia da semana,\nfim de semana"]; DATA -- d1; DATA -- d2;
+  h1 [label=<<U>hora:minuto</U>>]; h2 [label="faixa horária"]; HORARIO -- h1; HORARIO -- h2;
+  l1 [label=<<U>município + UF</U>>]; l2 [label="estado, região"]; LOCALIDADE -- l1; LOCALIDADE -- l2;
+  u1 [label=<<U>regional + delegacia + UOP</U>>]; UNIDADE -- u1;
+  c1 [label=<<U>descrição da causa</U>>]; CAUSA -- c1;
+  t1 [label=<<U>descrição do tipo</U>>]; TIPO -- t1;
+  m1 [label=<<U>descrição do tempo</U>>]; METEO -- m1;
+  v1 [label=<<U>fase do dia + sentido +<BR/>tipo de pista + uso do solo</U>>]; VIA -- v1;
+  x1 [label=<<U>combinação de traçados</U>>]; x2 [label="curva, reta, aclive,\ndeclive, ponte..."]; TRACADO -- x1; TRACADO -- x2;
+}
